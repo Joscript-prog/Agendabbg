@@ -221,7 +221,14 @@ function initFirebase(){
   db = FirebaseSDK.getFirestore(app);
   console.log("🔥 Firebase actif");
 }
-initFirebase();
+window.addEventListener("load", () => {
+  if (window.FirebaseSDK) {
+    initFirebase();
+  } else {
+    console.warn("FirebaseSDK non chargé, Firebase désactivé");
+  }
+});
+
 
 /* ================= DATA ================= */
 let inters = [];
@@ -423,4 +430,5 @@ function handleExport(type){
 
 </body>
 </html>
+
 
