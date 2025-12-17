@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Agenda & Missionnement – BugBusters</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  import {
+    getFirestore, collection, getDocs, doc, setDoc, deleteDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+  window.FirebaseSDK = {
+    initializeApp,
+    getFirestore,
+    collection,
+    getDocs,
+    doc,
+    setDoc,
+    deleteDoc
+  };
+</script>
+
+<style>
+body{font-family:Segoe UI,Arial;background:#eef2f5;margin:0}
+header{background:#003d7a;color:#fff;padding:14px;font-weight:bold}
+nav{display:flex;gap:10px;padding:10px;background:#f5f5f5;flex-wrap:wrap}
+nav button{padding:8px 14px;border:none;cursor:pointer;font-weight:bold;border-radius:8px}
+section{display:none;padding:15px}
+section.active{display:block}
+.card{background:#fff;border-radius:12px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);max-width:1200px}
+
+label{font-weight:600;margin-top:10px;display:block}
+input,select,textarea{width:100%;padding:8px;margin-top:5px;border-radius:8px;border:1px solid #ccc}
+textarea{resize:vertical}
+
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+.btn{padding:7px 10px;border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+.btn-blue{background:#0055a4;color:#fff}
+.btn-green{background:#27ae60;color:#fff}
+.btn-dark{background:#444;color:#fff}
+.btn-red{background:#c0392b;color:#fff}
+.btn-ghost{background:#eef2f5}
+
+table{width:100%;border-collapse:collapse;margin-top:10px;background:#fff}
+th,td{border:1px solid #000;padding:5px;font-size:12px}
+th{background:#ddd}
+
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45)}
+.modal-content{
+background:#fff;
+max-width:780px;
+margin:40px auto;
+padding:15px;
+border-radius:12px
+}
+pre{white-space:pre-wrap;font-family:Arial;font-size:14px;background:#f4f4f4;padding:10px;border-radius:8px;max-height:300px;overflow:auto}
+.tabs{display:flex;gap:10px;margin:10px 0}
+.tabs button{flex:1;padding:8px;font-weight:bold;border-radius:8px}
+.tabs .active{background:#0055a4;color:#fff}
+</style>
+</head>
+
+<body>
+
+<header>Agenda & Missionnement – BugBusters</header>
+
+<nav>
+  <button onclick="showTab('planif')">Planification</button>
+  <button onclick="showTab('agenda')">Agenda</button>
+  <button onclick="showTab('settings')">Paramètres</button>
+</nav>
+
+<!-- ================= PARAMÈTRES FIREBASE ================= -->
+<section id="settings">
+<div class="card">
+<h3>Paramètres Firebase</h3>
+
+<label>apiKey</label><input id="fb_apiKey">
+<label>authDomain</label><input id="fb_authDomain">
+<label>projectId</label><input id="fb_projectId">
+<label>storageBucket</label><input id="fb_storageBucket">
+<label>messagingSenderId</label><input id="fb_messagingSenderId">
+<label>appId</label><input id="fb_appId">
+
+<br><br>
+<button class="btn btn-blue" onclick="saveFirebaseConfig()">Enregistrer Firebase</button>
+<p style="font-size:12px;color:#555">Recharge la page après configuration.</p>
+</div>
+</section>
+
+<!-- ================= PLANIFICATION ================= -->
+<section id="planif" class="active">
+<div class="card">
+<h3>Intervention</h3>
+<input type="hidden" id="editId">
+
+<div class="grid">
+  <div>
+    <label>Typologie</label>
+    <select id="typologie" onchange="updateInter()">
+      <option>ISOLE</option><option>MITOYEN</option>
+    </select>
+  </div>
+  <div>
+    <label>Type</label>
+    <select id="typeInter" onchange="updateInter()">
+      <option>AUDIT</option><option>TRAVAUX</option>
+    </select>
+  </div>
+</div>
+
+<label>Intervention</label>
+<select id="intervention"></select>
+
+<div class="grid">
+  <div><label>Réf OT</label><input id="refOT"></div>
+  <div><label>Nom du site</label><input id="site"></div>
+</div>
+
+<div class="grid">
+  <div><label>Date</label><input type="date" id="date"></div>
+  <div><label>Heure</label><input type="time" id="heure" value="09:00"></div>
+</div>
+
+<div class="grid">
+  <div><label>Durée</label><input id="duree"></div>
+  <div><label>Tarif</label><input id="tarif"></div>
+</div>
+
+<label>Adresse</label><input id="adresse">
+<label>Technicien</label><input id="tech">
+
+<label>Informations techniques</label>
+<textarea id="infos" rows="5"></textarea>
+
+<div class="row">
+  <button class="btn btn-green" onclick="addHNO()">HNO</button>
+  <button class="btn btn-green" onclick="addNacelle()">Nacelle</button>
+  <button class="btn btn-blue" onclick="saveOrUpdate()">Enregistrer</button>
+</div>
+</div>
+</section>
+
+<!-- ================= AGENDA ================= -->
+<section id="agenda">
+<div class="card">
+<label>Date</label>
+<input type="date" id="agendaDate" onchange="loadAgenda()">
+
+<div class="row" style="margin:10px 0">
+  <button class="btn btn-dark" onclick="copyCR()">CR LIGHT</button>
+  <select onchange="handleExport(this.value)">
+    <option value="">Export</option>
+    <option value="TECH">Par technicien</option>
+    <option value="KO">Inter KO</option>
+  </select>
+</div>
+
+<div id="agendaTable"></div>
+</div>
+</section>
+
+<!-- ================= MODAL MAIL ================= -->
+<div class="modal" id="modal">
+<div class="modal-content">
+<h3>Générateur de mails</h3>
+
+<div class="row">
+<label><input type="radio" name="profil" value="jonathan" checked> Jonathan</label>
+<label><input type="radio" name="profil" value="sylvie"> Sylvie</label>
+<button class="btn btn-ghost" style="margin-left:auto" onclick="closeModal()">✕</button>
+</div>
+
+<div class="tabs">
+<button id="tabRdv" class="active" onclick="showMail('rdv')">RDV</button>
+<button id="tabMission" onclick="showMail('mission')">Missionnement</button>
+</div>
+
+<p><strong>Objet</strong></p>
+<pre id="mailObjet"></pre>
+
+<p><strong>Corps</strong></p>
+<pre id="mailCorps"></pre>
+
+<div class="row">
+<button class="btn btn-blue" onclick="copy('mailObjet')">Copier objet</button>
+<button class="btn btn-blue" onclick="copy('mailCorps')">Copier corps</button>
+<button class="btn btn-green" onclick="markMailSent()">Marquer envoyé</button>
+</div>
+</div>
+</div>
+
+<script>
+/* ================= FIREBASE ================= */
+let db = null;
+
+function saveFirebaseConfig(){
+  const cfg = {
+    apiKey: fb_apiKey.value,
+    authDomain: fb_authDomain.value,
+    projectId: fb_projectId.value,
+    storageBucket: fb_storageBucket.value,
+    messagingSenderId: fb_messagingSenderId.value,
+    appId: fb_appId.value
+  };
+  localStorage.setItem("firebaseConfig", JSON.stringify(cfg));
+  alert("Firebase configuré. Recharge la page.");
+}
+
+function initFirebase(){
+  const cfg = JSON.parse(localStorage.getItem("firebaseConfig"));
+  if(!cfg || !cfg.apiKey) return;
+  const app = FirebaseSDK.initializeApp(cfg);
+  db = FirebaseSDK.getFirestore(app);
+  console.log("🔥 Firebase actif");
+}
+initFirebase();
+
+/* ================= DATA ================= */
+let inters = [];
+let current=null, currentMailType=null;
+
+/* ================= UTILS ================= */
+function showTab(id){
+  document.querySelectorAll("section").forEach(s=>s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+function formatDate(d){
+  const x=new Date(d);
+  return `${String(x.getDate()).padStart(2,"0")}/${String(x.getMonth()+1).padStart(2,"0")}/${x.getFullYear()}`;
+}
+
+/* ================= BUSINESS ================= */
+function updateInter(){
+  intervention.innerHTML="";
+  if(typeInter.value==="AUDIT"){
+    intervention.add(new Option(
+      typologie.value==="ISOLE"?"AUDIT LIEN":"AUDIT LIEN & ROCADE"
+    ));
+  } else {
+    ["TRAVAUX INFRA","TRAVAUX ROCADE","TRAVAUX INFRA + ROCADE"]
+      .forEach(v=>intervention.add(new Option(v)));
+  }
+}
+updateInter();
+
+function addHNO(){ infos.value+="\nPassage dans la zone de vente, travaux à effectuer en HNO."; }
+function addNacelle(){ infos.value+="\nTravaux en hauteur, prévoir nacelle."; }
+
+/* ================= CRUD ================= */
+async function saveOrUpdate(){
+  const id = editId.value || crypto.randomUUID();
+  const obj = {
+    id,
+    typologie:typologie.value,
+    type:typeInter.value,
+    intervention:intervention.value,
+    refOT:refOT.value,
+    date:date.value,
+    heure:heure.value,
+    duree:duree.value,
+    tarif:tarif.value,
+    adresse:adresse.value,
+    site:site.value.toUpperCase(),
+    tech:tech.value,
+    infos:infos.value,
+    statut:"En cours",
+    mailRDVEnvoye:false,
+    mailMissionEnvoye:false
+  };
+
+  if(db){
+    await FirebaseSDK.setDoc(FirebaseSDK.doc(db,"interventions",id), obj);
+  } else {
+    const idx=inters.findIndex(i=>i.id===id);
+    if(idx>=0) inters[idx]=obj; else inters.push(obj);
+    localStorage.setItem("inters_v2",JSON.stringify(inters));
+  }
+
+  alert("Intervention enregistrée");
+}
+
+async function loadAgenda(){
+  const d=agendaDate.value;
+  inters=[];
+
+  if(db){
+    const snap = await FirebaseSDK.getDocs(FirebaseSDK.collection(db,"interventions"));
+    snap.forEach(docu=>inters.push(docu.data()));
+  } else {
+    inters = JSON.parse(localStorage.getItem("inters_v2")||"[]");
+  }
+
+  let h=`<table><tr>
+<th>CODE</th><th>SITE</th><th>TYPO</th><th>INTER</th>
+<th>DATE</th><th>RDV</th><th>MISSION</th><th>ACTIONS</th></tr>`;
+
+  inters.filter(i=>i.date===d).forEach(i=>{
+    const code=(i.site.match(/\d+/)||[""])[0];
+    h+=`<tr>
+<td>${code}</td><td>${i.site}</td><td>${i.typologie}</td>
+<td>${i.intervention}</td><td>${formatDate(i.date)}</td>
+<td>${i.mailRDVEnvoye?"✅":"⭕"}</td>
+<td>${i.mailMissionEnvoye?"✅":"⭕"}</td>
+<td>
+<button onclick="editInter('${i.id}')">✏️</button>
+<button onclick="deleteInter('${i.id}')">🗑️</button>
+<button onclick="openMail('${i.id}')">📧</button>
+</td></tr>`;
+  });
+
+  h+="</table>";
+  agendaTable.innerHTML=h;
+}
+
+function editInter(id){
+  const i=inters.find(x=>x.id===id);
+  Object.keys(i).forEach(k=>{ if(document.getElementById(k)) document.getElementById(k).value=i[k]; });
+  editId.value=id;
+  showTab('planif');
+}
+
+async function deleteInter(id){
+  if(!confirm("Supprimer définitivement cette intervention ?")) return;
+  if(db){
+    await FirebaseSDK.deleteDoc(FirebaseSDK.doc(db,"interventions",id));
+  } else {
+    inters=inters.filter(i=>i.id!==id);
+    localStorage.setItem("inters_v2",JSON.stringify(inters));
+  }
+  loadAgenda();
+}
+
+/* ================= MAILS ================= */
+function openMail(id){
+  current=inters.find(i=>i.id===id);
+  modal.style.display="block";
+  showMail("mission");
+}
+function closeModal(){ modal.style.display="none"; }
+
+function showMail(type){
+  currentMailType=type;
+  const profil=document.querySelector('input[name="profil"]:checked').value;
+  const date=formatDate(current.date);
+  const heure=current.heure.replace(":","H");
+
+  mailObjet.textContent = type==="rdv"
+    ? `RDV ${current.intervention} ${current.site}`
+    : `MISSIONNEMENT PROJET MARIE BLACHERE - N° ${current.refOT}- ${current.site}`;
+
+  mailCorps.textContent = type==="rdv"
+? `Bonjour,
+
+Pour le site ${current.site}, nous vous proposons le ${date} à ${heure} avec le technicien ${current.tech}.
+
+Cordialement,
+${profil==="jonathan"?"Jonathan OTONIA":"Sylvie R\n01 88 61 35 81"}`
+: `Bonjour,
+
+Comme convenu ensemble, nous missionnons le technicien ${current.tech} sur le projet MARIE BLACHERE pour l'intervention suivante :
+
+Informations générales :
+Nature de l'intervention : ${current.intervention}
+Date d'intervention : ${date}
+Heure d'intervention : ${heure}
+Durée : ${current.duree}
+Tarif : ${current.tarif}
+Adresse du site : ${current.adresse}
+Nom du site :  ${current.site}
+
+Informations techniques :
+${current.infos}
+
+Cordialement,
+${profil==="jonathan"?"Jonathan OTONIA":"Sylvie R\ntravaux-marieblacher@bugbusters.fr\n01 88 61 35 81"}`;
+}
+
+function markMailSent(){
+  if(currentMailType==="rdv") current.mailRDVEnvoye=true;
+  else current.mailMissionEnvoye=true;
+
+  if(db){
+    FirebaseSDK.setDoc(FirebaseSDK.doc(db,"interventions",current.id), current);
+  } else {
+    localStorage.setItem("inters_v2",JSON.stringify(inters));
+  }
+  loadAgenda();
+  alert("Mail marqué comme envoyé");
+}
+
+/* ================= EXPORT / CR ================= */
+function copy(id){ navigator.clipboard.writeText(document.getElementById(id).innerText); }
+function copyCR(){
+  const r=document.createRange();
+  r.selectNode(agendaTable);
+  getSelection().removeAllRanges();
+  getSelection().addRange(r);
+  document.execCommand("copy");
+  getSelection().removeAllRanges();
+  alert("CR LIGHT copié");
+}
+function handleExport(type){
+  let data=[];
+  if(type==="KO") data=inters.filter(i=>i.statut==="KO");
+  else{
+    const t=prompt("Technicien ?");
+    data=inters.filter(i=>i.tech===t);
+  }
+  const ws=XLSX.utils.json_to_sheet(data);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Interventions");
+  XLSX.writeFile(wb,"export.xlsx");
+}
+</script>
+
+</body>
+</html>
