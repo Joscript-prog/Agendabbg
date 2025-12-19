@@ -354,23 +354,43 @@ function openMail(id){
 function closeModal(){ modal.style.display="none"; }
 
 function showMail(type){
-  currentMailType=type;
-  const profil=document.querySelector('input[name="profil"]:checked').value;
-  const date=formatDate(current.date);
-  const heure=current.heure.replace(":","H");
+  currentMailType = type;
+  const profil = document.querySelector('input[name="profil"]:checked').value;
+  const date = formatDate(current.date);
+  const heure = current.heure.replace(":","H");
 
+  // 👉 1️⃣ Détection Travaux Rocade
+  const isTravauxRocade =
+    current.type === "TRAVAUX" &&
+    current.intervention.toUpperCase().includes("ROCADE");
+
+  // 👉 2️⃣ Bloc logistique conditionnel
+  const blocLogistique = isTravauxRocade
+  ? `
+
+A mentionner seulement si Travaux :
+
+Logistique :
+Nous t'avons expédié des équipements à installer lors de la réalisation des travaux.
+Les informations d'expédition sont disponibles dans ton ticket MOBILITY 4.
+Attention, les colis ne restent que 7 jours calendaires au point relais.
+`
+  : "";
+
+  // 👉 3️⃣ Objet du mail
   mailObjet.textContent = type==="rdv"
     ? `RDV ${current.intervention} ${current.site}`
     : `MISSIONNEMENT PROJET MARIE BLACHERE - N° ${current.refOT}- ${current.site}`;
 
+  // 👉 4️⃣ Corps du mail
   mailCorps.textContent = type==="rdv"
-? `Bonjour,
+    ? `Bonjour,
 
 Pour le site ${current.site}, nous vous proposons le ${date} à ${heure} avec le technicien ${current.tech}.
 
 Cordialement,
 ${profil==="jonathan"?"Jonathan OTONIA":"Sylvie R\n01 88 61 35 81"}`
-: `Bonjour,
+    : `Bonjour,
 
 Comme convenu ensemble, nous missionnons le technicien ${current.tech} sur le projet MARIE BLACHERE pour l'intervention suivante :
 
@@ -381,13 +401,30 @@ Heure d'intervention : ${heure}
 Durée : ${current.duree}
 Tarif : ${current.tarif}
 Adresse du site : ${current.adresse}
-Nom du site :  ${current.site}
+Nom du site : ${current.site}
 
 Informations techniques :
 ${current.infos}
 
-Cordialement,
-${profil==="jonathan"?"Jonathan OTONIA":"Sylvie R\ntravaux-marieblacher@bugbusters.fr\n01 88 61 35 81"}`;
+Les documents techniques sont disponibles dans le ticket de l'intervention.
+
+Rapport intervention :
+- Rédiger le rapport d'intervention sur KIZEO avec photos horodatées
+- Rédiger le rapport d'intervention sur MOBILITY 4
+
+Informations importantes :
+- Tout retard d’arrivée sur site doit faire l’objet d’une alerte immédiate auprès de Jonathan ou Jean-Michel
+- Toute difficulté rencontrée sur site doit être communiquée à Jonathan ou Jean-Michel
+${blocLogistique}
+
+Nous restons disponibles si tu as la moindre question.
+
+En te remerciant,
+
+${profil==="jonathan"
+  ? "Jonathan OTONIA"
+  : "Sylvie R\ntravaux-marieblacher@bugbusters.fr\n01 88 61 35 81"
+}`;
 }
 
 function markMailSent(){
@@ -430,5 +467,6 @@ function handleExport(type){
 
 </body>
 </html>
+
 
 
