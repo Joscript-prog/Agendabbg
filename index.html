@@ -29,7 +29,8 @@
 body{font-family:Segoe UI,Arial;background:#eef2f5;margin:0}
 header{background:#003d7a;color:#fff;padding:14px;font-weight:bold}
 nav{display:flex;gap:10px;padding:10px;background:#f5f5f5;flex-wrap:wrap}
-nav button{padding:8px 14px;border:none;cursor:pointer;font-weight:bold;border-radius:8px}
+nav button{background:#ddd;padding:8px 14px;border:none;cursor:pointer;font-weight:bold;border-radius:8px}
+nav button:hover{background:#ccc}  
 section{display:none;padding:15px}
 section.active{display:block}
 .card{background:#fff;border-radius:12px;padding:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);max-width:1200px}
@@ -79,21 +80,30 @@ pre{white-space:pre-wrap;font-family:Arial;font-size:14px;background:#f4f4f4;pad
 
 <!-- ================= PARAMÈTRES FIREBASE ================= -->
 <section id="settings">
-<div class="card">
-<h3>Paramètres Firebase</h3>
+  <div class="card">
+    <h3>Paramètres Firebase</h3>
 
-<label>apiKey</label><input id="fb_apiKey">
-<label>authDomain</label><input id="fb_authDomain">
-<label>projectId</label><input id="fb_projectId">
-<label>storageBucket</label><input id="fb_storageBucket">
-<label>messagingSenderId</label><input id="fb_messagingSenderId">
-<label>appId</label><input id="fb_appId">
+    <label>apiKey</label><input id="fb_apiKey">
+    <label>authDomain</label><input id="fb_authDomain">
+    <label>projectId</label><input id="fb_projectId">
+    <label>storageBucket</label><input id="fb_storageBucket">
+    <label>messagingSenderId</label><input id="fb_messagingSenderId">
+    <label>appId</label><input id="fb_appId">
 
-<br><br>
-<button class="btn btn-blue" onclick="saveFirebaseConfig()">Enregistrer Firebase</button>
-<p style="font-size:12px;color:#555">Recharge la page après configuration.</p>
-</div>
+    <br><br>
+    <button class="btn btn-blue" onclick="saveFirebaseConfig()">Enregistrer Firebase</button>
+    <p style="font-size:12px;color:#555">Recharge la page après configuration.</p>
+
+    <hr style="margin:20px 0">
+
+    <h3>Import techniciens (Excel)</h3>
+    <input type="file" id="techExcel" accept=".xlsx,.xls">
+    <p style="font-size:12px;color:#555">
+      Nom = colonne D · Prénom = colonne E · Téléphone = colonne L
+    </p>
+  </div>
 </section>
+
 
 <!-- ================= PLANIFICATION ================= -->
 <section id="planif" class="active">
@@ -222,19 +232,58 @@ function initFirebase(){
   console.log("🔥 Firebase actif");
 }
 window.addEventListener("load", () => {
+  // Charger config Firebase existante
+  const cfg = JSON.parse(localStorage.getItem("firebaseConfig") || "{}");
+  if(cfg.apiKey) {
+    fb_apiKey.value = cfg.apiKey;
+    fb_authDomain.value = cfg.authDomain;
+    fb_projectId.value = cfg.projectId;
+    fb_storageBucket.value = cfg.storageBucket;
+    fb_messagingSenderId.value = cfg.messagingSenderId;
+    fb_appId.value = cfg.appId;
+  }
+  
   if (window.FirebaseSDK) {
     initFirebase();
-  } else {
-    console.warn("FirebaseSDK non chargé, Firebase désactivé");
   }
 });
 
+document.getElementById("techExcel")?.addEventListener("change", handleTechExcel);
+
+function handleTechExcel(e){
+  const file = e.target.files[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+  reader.onload = evt => {
+    const data = new Uint8Array(evt.target.result);
+    const wb = XLSX.read(data, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    techs = rows.slice(1).map(r => ({
+      nom: (r[3] || "").toString().trim(),     // colonne D
+      prenom: (r[4] || "").toString().trim(),  // colonne E
+      tel: (r[11] || "").toString().trim()     // colonne L
+    })).filter(t => t.nom && t.prenom);
+
+    localStorage.setItem("techs_ref", JSON.stringify(techs));
+    alert("Techniciens importés : " + techs.length);
+  };
+  reader.readAsArrayBuffer(file);
+}
 
 /* ================= DATA ================= */
 let inters = [];
-let current=null, currentMailType=null;
+let current = null, currentMailType = null;
 
+let techs = [];              // liste des techniciens Excel
+let currentTechPhone = "";  // téléphone du technicien sélectionné
+
+const savedTechs = localStorage.getItem("techs_ref");
+if (savedTechs) techs = JSON.parse(savedTechs);
 /* ================= UTILS ================= */
+
 function showTab(id){
   document.querySelectorAll("section").forEach(s=>s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
@@ -243,6 +292,67 @@ function formatDate(d){
   const x=new Date(d);
   return `${String(x.getDate()).padStart(2,"0")}/${String(x.getMonth()+1).padStart(2,"0")}/${x.getFullYear()}`;
 }
+const techInput = document.getElementById("tech");
+const techList = document.createElement("div");
+techList.style.position = "absolute";
+techList.style.background = "#fff";
+techList.style.border = "1px solid #ccc";
+techList.style.zIndex = "1000";
+techList.style.borderRadius = "6px";
+techList.style.display = "none";
+techInput.parentNode.appendChild(techList);
+
+techInput.addEventListener("input", () => {
+  const q = techInput.value.trim().toLowerCase();
+  techList.innerHTML = "";
+  currentTechPhone = "";
+
+  // 🔹 Trop court → on cache la liste
+  if (q.length < 2) {
+    techList.style.display = "none";
+    return;
+  }
+  
+
+  // 🔹 Filtrage nom / prénom (sécurisé)
+  const matches = techs.filter(t =>
+    (t.nom && t.nom.toLowerCase().includes(q)) ||
+    (t.prenom && t.prenom.toLowerCase().includes(q))
+  );
+
+  // 🔹 Aucune correspondance
+  if (!matches.length) {
+    techList.style.display = "none";
+    return;
+  }
+
+  // 🔹 Construction des suggestions
+  matches.forEach(t => {
+    const d = document.createElement("div");
+    d.textContent = `${t.prenom} ${t.nom}`;
+    d.style.padding = "6px 8px";
+    d.style.cursor = "pointer";
+
+    // petit confort visuel
+    d.onmouseenter = () => d.style.background = "#eef2f5";
+    d.onmouseleave = () => d.style.background = "#fff";
+
+    d.onclick = () => {
+      techInput.value = `${t.prenom} ${t.nom}`;
+      currentTechPhone = t.tel; // 🔑 récup tel Excel
+      techList.style.display = "none";
+    };
+
+    techList.appendChild(d);
+  });
+
+  techList.style.display = "block";
+});
+document.addEventListener("click", (e) => {
+  if(e.target !== techInput && !techList.contains(e.target)) {
+    techList.style.display = "none";
+  }
+});
 
 /* ================= BUSINESS ================= */
 function updateInter(){
@@ -262,7 +372,14 @@ function addHNO(){ infos.value+="\nPassage dans la zone de vente, travaux à eff
 function addNacelle(){ infos.value+="\nTravaux en hauteur, prévoir nacelle."; }
 
 /* ================= CRUD ================= */
+/* ================= CRUD ================= */
 async function saveOrUpdate(){
+  // ✅ Validation des champs obligatoires
+  if(!date.value || !site.value || !tech.value) {
+    alert("Veuillez remplir au minimum : Date, Site et Technicien");
+    return;
+  }
+  
   const id = editId.value || crypto.randomUUID();
   const obj = {
     id,
@@ -348,12 +465,29 @@ async function deleteInter(id){
 /* ================= MAILS ================= */
 function openMail(id){
   current=inters.find(i=>i.id===id);
+  
+  // 🔑 Récupérer le téléphone du technicien
+  const techFound = techs.find(t => 
+    current.tech === `${t.prenom} ${t.nom}`
+  );
+  currentTechPhone = techFound ? techFound.tel : "";
+  
   modal.style.display="block";
   showMail("mission");
 }
 function closeModal(){ modal.style.display="none"; }
 
 function showMail(type){
+  // 🔄 Mise à jour visuelle des onglets
+  document.getElementById('tabRdv').classList.remove('active');
+  document.getElementById('tabMission').classList.remove('active');
+  
+  if(type === 'rdv') {
+    document.getElementById('tabRdv').classList.add('active');
+  } else {
+    document.getElementById('tabMission').classList.add('active');
+  }
+  
   currentMailType = type;
   const profil = document.querySelector('input[name="profil"]:checked').value;
   const date = formatDate(current.date);
@@ -386,7 +520,8 @@ Attention, les colis ne restent que 7 jours calendaires au point relais.
   mailCorps.textContent = type==="rdv"
     ? `Bonjour,
 
-Pour le site ${current.site}, nous vous proposons le ${date} à ${heure} avec le technicien ${current.tech}.
+Pour le site ${current.site}, nous vous proposons le ${date} à ${heure} avec le technicien ${current.tech}${currentTechPhone ? " – " + currentTechPhone : ""}
+
 
 Cordialement,
 ${profil==="jonathan"?"Jonathan OTONIA":"Sylvie R\n01 88 61 35 81"}`
@@ -413,7 +548,7 @@ Rapport intervention :
 - Rédiger le rapport d'intervention sur MOBILITY 4
 
 Informations importantes :
-- Tout retard d’arrivée sur site doit faire l’objet d’une alerte immédiate auprès de Jonathan ou Jean-Michel
+- Tout retard d'arrivée sur site doit faire l'objet d'une alerte immédiate auprès de Jonathan ou Jean-Michel
 - Toute difficulté rencontrée sur site doit être communiquée à Jonathan ou Jean-Michel
 ${blocLogistique}
 
@@ -452,16 +587,31 @@ function copyCR(){
   alert("CR LIGHT copié");
 }
 function handleExport(type){
+  if(!type) return; // Ne rien faire si "Export" est sélectionné
+  
   let data=[];
-  if(type==="KO") data=inters.filter(i=>i.statut==="KO");
-  else{
-    const t=prompt("Technicien ?");
+  if(type==="KO") {
+    data=inters.filter(i=>i.statut==="KO");
+  } else if(type==="TECH") {
+    const t=prompt("Nom du technicien ?");
+    if(!t) return; // Annulation du prompt
     data=inters.filter(i=>i.tech===t);
   }
+  
+  // Vérifier si des données existent
+  if(data.length === 0) {
+    alert("Aucune donnée à exporter");
+    event.target.value = ""; // Réinitialiser le select
+    return;
+  }
+  
   const ws=XLSX.utils.json_to_sheet(data);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,"Interventions");
-  XLSX.writeFile(wb,"export.xlsx");
+  XLSX.writeFile(wb,`export_${type}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  
+  event.target.value = ""; // Réinitialiser le select après export
+  alert(`Export réussi : ${data.length} intervention(s)`);
 }
 </script>
 
